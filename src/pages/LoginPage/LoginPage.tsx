@@ -2,6 +2,7 @@ import { Button, Stack, Typography } from '@mui/material'
 import { useState } from 'react'
 import { useSession } from '../../entities/user'
 import { api, ApiError } from '../../shared/api'
+import { Logo } from '../../shared/ui'
 
 export function LoginPage() {
   const user = useSession((state) => state.user)
@@ -21,6 +22,7 @@ export function LoginPage() {
 
   return (
     <Stack spacing={2} sx={{ p: 6, alignItems: 'flex-start' }}>
+      <Logo />
       <Typography variant="h1">Проверка сессии</Typography>
       <Typography>
         Статус: <b>{status}</b>

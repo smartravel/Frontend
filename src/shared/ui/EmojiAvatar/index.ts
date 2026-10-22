@@ -1,0 +1,1 @@
+export { EmojiAvatar } from './EmojiAvatar'
