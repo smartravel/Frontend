@@ -1,17 +1,15 @@
+import { RouterProvider } from 'react-router'
 import {theme} from './styles/themes'
-import { ThemeProvider, CssBaseline, Button, Typography, Stack} from '@mui/material'
+import { ThemeProvider, CssBaseline} from '@mui/material'
+import { router } from './router'
+
 
 function App() {
 
   return (
     <ThemeProvider theme={theme}>
-      <CssBaseline>
-        <Stack direction='row' spacing={2}>
-          <Typography variant='h1'>Мои поездки</Typography>
-          <Typography color='text.secondary'>Казань</Typography>
-          <Button variant='contained'>Создать поездку</Button>
-        </Stack>
-      </CssBaseline>
+      <CssBaseline/>
+      <RouterProvider router={router}/>
     </ThemeProvider>
 
   )
