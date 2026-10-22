@@ -6,9 +6,18 @@ import '@fontsource/unbounded/600.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './app/App'
+import { USE_MOCKS } from './shared/config/env'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+async function enableMocks() {
+  if (!import.meta.env.DEV || !USE_MOCKS) return
+  const { worker } = await import('./app/mocks/browser')
+  await worker.start()
+}
+
+enableMocks().then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+})
