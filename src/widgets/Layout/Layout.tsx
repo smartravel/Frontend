@@ -1,5 +1,5 @@
-import { Box, Container, Link } from "@mui/material";
-import { Outlet, Link as RouterLink} from "react-router";
+import { Box, Container, Link } from '@mui/material'
+import { Outlet, Link as RouterLink } from 'react-router'
 
 export function Layout() {
   return (
