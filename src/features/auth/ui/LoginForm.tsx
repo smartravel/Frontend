@@ -5,6 +5,7 @@ import { Alert, Button, Stack, TextField } from '@mui/material'
 import { useSession } from '../../../entities/user'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../../../shared/api'
+import { PasswordField } from './PasswordField'
 
 export function LoginForm() {
   const login = useSession((state) => state.login)
@@ -51,11 +52,10 @@ export function LoginForm() {
         name="password"
         control={control}
         render={({ field }) => (
-          <TextField
+          <PasswordField
             {...field}
             label="Password"
             autoComplete="current-password"
-            type="password"
             error={!!errors.password}
             helperText={errors.password?.message}
           />
