@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { RouterProvider } from 'react-router'
 import { useSession } from '../entities/user'
 import { setUnauthorizedHandler } from '../shared/api'
-import { router } from './router'
+import { router } from './routes/router'
 import { theme } from './styles/themes'
 
 setUnauthorizedHandler(() => useSession.getState().reset())
