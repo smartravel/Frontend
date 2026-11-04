@@ -1,0 +1,18 @@
+export const AVATAR_EMOJIS = [
+  { emoji: '🦊', label: 'лиса' },
+  { emoji: '🐼', label: 'панда' },
+  { emoji: '🐳', label: 'кит' },
+  { emoji: '🐻', label: 'медведь' },
+  { emoji: '🐧', label: 'пингвин' },
+  { emoji: '🐱', label: 'кот' },
+  { emoji: '🐸', label: 'лягушка' },
+  { emoji: '🦔', label: 'ёжик' },
+  { emoji: '🦉', label: 'сова' },
+  { emoji: '🐢', label: 'черепаха' },
+  { emoji: '🦄', label: 'единорог' },
+  { emoji: '🐙', label: 'осьминог' },
+  { emoji: '🌵', label: 'кактус' },
+  { emoji: '🎒', label: 'рюкзак' },
+  { emoji: '⛺', label: 'палатка' },
+  { emoji: '✈️', label: 'самолёт' },
+]

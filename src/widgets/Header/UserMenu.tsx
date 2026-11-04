@@ -14,6 +14,10 @@ export function UserMenu({ user }: { user: User }) {
     await logout()
     navigate('/login')
   }
+  function goToProfile() {
+    setAnchor(null)
+    navigate('/profile')
+  }
 
   return (
     <>
@@ -45,6 +49,7 @@ export function UserMenu({ user }: { user: User }) {
           <ListItemText primary={user.nickname} secondary={user.email} />
         </Box>
         <Divider />
+        <MenuItem onClick={goToProfile}>Профиль</MenuItem>
         <MenuItem onClick={handleLogout}>Выйти</MenuItem>
       </Menu>
     </>

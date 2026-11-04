@@ -7,6 +7,7 @@ import { NotFoundPage } from '../../pages/NotFoundPage'
 import { RegisterPage } from '../../pages/RegisterPage/RegisterPage'
 import { GuestRoute } from './GuestRoute'
 import { ProtectedRoute } from './ProtectedRoute'
+import { ProfilePage } from '../../pages/ProfilePage'
 
 export const router = createBrowserRouter([
   {
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
         element: <Layout />,
         children: [
           { path: '/', element: <TripsPage /> },
+          { path: '/profile', element: <ProfilePage /> },
           { path: '/trips/:tripId', element: <TripPage /> },
         ],
       },
