@@ -3,7 +3,13 @@ import SearchOffIcon from '@mui/icons-material/SearchOff'
 import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Outlet, Link as RouterLink, useParams } from 'react-router'
-import { tripApi, type Member, type Trip, type TripContext } from '../../entities/trip'
+import {
+  tripApi,
+  useTripSocket,
+  type Member,
+  type Trip,
+  type TripContext,
+} from '../../entities/trip'
 import { ApiError } from '../../shared/api'
 import { TripHeader } from '../../widgets/TripHeader'
 
@@ -21,6 +27,17 @@ export function TripPage() {
     setLoadedId(tripId)
     setState({ status: 'loading' })
   }
+
+  const { status: socketStatus, subscribe } = useTripSocket(tripId, state.status === 'ready')
+
+  useEffect(() => {
+    return subscribe((event) => {
+      if (event.entity !== 'member') return
+      Promise.all([tripApi.getById(tripId), tripApi.getMembers(tripId)])
+        .then(([trip, members]) => setState({ status: 'ready', trip, members }))
+        .catch(() => {})
+    })
+  }, [subscribe, tripId])
 
   useEffect(() => {
     let ignore = false
@@ -71,11 +88,16 @@ export function TripPage() {
     return <Alert severity="error">{state.message}</Alert>
   }
 
-  const context: TripContext = { trip: state.trip, members: state.members }
+  const context: TripContext = {
+    trip: state.trip,
+    members: state.members,
+    socketStatus,
+    subscribe,
+  }
 
   return (
     <Stack spacing={3}>
-      <TripHeader trip={state.trip} members={state.members} />
+      <TripHeader trip={state.trip} members={state.members} socketStatus={socketStatus} />
       <Outlet context={context} />
     </Stack>
   )

@@ -1,0 +1,1 @@
+export { JoinTripPage } from './JoinTripPage'

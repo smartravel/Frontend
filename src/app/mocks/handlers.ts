@@ -1,8 +1,8 @@
-import { delay, http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse, ws } from 'msw'
 import type { LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../entities/user'
 import { API_URL } from '../../shared/config/env'
 import { currentUser, db, startSession, toPublicUser } from './db'
-import type { CreateTripRequest, TripListItem } from '../../entities/trip'
+import type { CreateTripRequest, JoinTripRequest, TripListItem } from '../../entities/trip'
 
 const url = (path: string) => `${API_URL}${path}`
 const unauthorized = () => HttpResponse.json({ detail: 'Не авторизован' }, { status: 401 })
@@ -30,10 +30,38 @@ function tripDetail(trip: TripListItem) {
     ...rest,
     destination: details?.destination ?? null,
     days_left: daysLeft,
-    // Ссылку-приглашение видит только организатор
     invite_token: trip.my_role === 'organizer' ? details?.invite_token : undefined,
   }
 }
+
+const wsOrigin = window.location.origin.replace(/^http/, 'ws')
+const tripSocket = ws.link(`${wsOrigin}${API_URL}/ws/trips/:tripId`)
+
+type SocketClient = { send: (data: string) => void }
+const rooms = new Map<string, Set<SocketClient>>()
+
+function notifyTrip(tripId: string, event: { type: string; entity: string; data: unknown }) {
+  rooms.get(tripId)?.forEach((client) => client.send(JSON.stringify(event)))
+}
+
+const socketHandlers = [
+  tripSocket.addEventListener('connection', ({ client, params }) => {
+    const tripId = String(params.tripId)
+    if (!currentUser()) {
+      client.close(4401, 'Не авторизован')
+      return
+    }
+    if (!rooms.has(tripId)) rooms.set(tripId, new Set())
+    rooms.get(tripId)!.add(client)
+    client.addEventListener('close', () => rooms.get(tripId)?.delete(client))
+  }),
+]
+
+const GUESTS = [
+  { nickname: 'Лена', avatar_emoji: '🦉' },
+  { nickname: 'Костя', avatar_emoji: '🐢' },
+  { nickname: 'Вика', avatar_emoji: '🦄' },
+]
 
 const tripHandlers = [
   http.get(url('/trips'), async ({ request }) => {
@@ -95,6 +123,68 @@ const tripHandlers = [
     return HttpResponse.json(tripDetail(trip), { status: 201 })
   }),
 
+  http.post(url('/trips/join'), async ({ request }) => {
+    await delay(500)
+    const user = currentUser()
+    if (!user) return unauthorized()
+    const { invite_token, password } = (await request.json()) as JoinTripRequest
+    const invite = db.invites[invite_token]
+    if (!invite) return HttpResponse.json({ detail: 'Приглашение не найдено' }, { status: 404 })
+
+    const attempts = (db.joinAttempts[invite_token] ??= { failed: 0, lockedUntil: 0 })
+    const secondsLocked = Math.ceil((attempts.lockedUntil - Date.now()) / 1000)
+    if (secondsLocked > 0) {
+      return HttpResponse.json(
+        { detail: 'Слишком много попыток' },
+        { status: 429, headers: { 'Retry-After': String(secondsLocked) } },
+      )
+    }
+    if (password !== invite.password) {
+      attempts.failed += 1
+      if (attempts.failed >= 3) {
+        attempts.failed = 0
+        attempts.lockedUntil = Date.now() + 60_000
+        return HttpResponse.json(
+          { detail: 'Слишком много попыток' },
+          { status: 429, headers: { 'Retry-After': '60' } },
+        )
+      }
+      return HttpResponse.json({ detail: 'Неверный пароль группы' }, { status: 403 })
+    }
+
+    attempts.failed = 0
+    let trip = db.trips.find((t) => t.id === invite.tripId)
+    if (!trip) {
+      trip = db.hiddenTrips.find((t) => t.id === invite.tripId)!
+      db.trips.unshift(trip)
+    }
+    const members = (db.members[trip.id] ??= [])
+    if (!members.some((m) => m.user_id === user.id)) {
+      const member = {
+        user_id: user.id,
+        nickname: user.nickname,
+        avatar_emoji: user.avatar_emoji,
+        role: 'member' as const,
+      }
+      members.push(member)
+      trip.members_count = members.length
+      notifyTrip(trip.id, { type: 'created', entity: 'member', data: member })
+    }
+    return HttpResponse.json(tripDetail(trip))
+  }),
+
+  http.post(url('/__mock/someone-joined/:tripId'), ({ params }) => {
+    const tripId = String(params.tripId)
+    const trip = db.trips.find((t) => t.id === tripId)
+    if (!trip) return HttpResponse.json({ detail: 'Поездка не найдена' }, { status: 404 })
+    const guest = GUESTS[(db.members[tripId]?.length ?? 0) % GUESTS.length]
+    const member = { user_id: crypto.randomUUID(), ...guest, role: 'member' as const }
+    db.members[tripId] = [...(db.members[tripId] ?? []), member]
+    trip.members_count = db.members[tripId].length
+    notifyTrip(tripId, { type: 'created', entity: 'member', data: member })
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   http.get(url('/trips/:tripId'), async ({ params }) => {
     await delay(400)
     if (!currentUser()) return unauthorized()
@@ -113,6 +203,7 @@ const tripHandlers = [
 ]
 
 export const handlers = [
+  ...socketHandlers,
   ...tripHandlers,
   http.post(url('/auth/login'), async ({ request }) => {
     await delay(400)

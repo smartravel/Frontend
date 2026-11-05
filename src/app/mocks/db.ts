@@ -62,6 +62,7 @@ export const db = {
     't-1': { destination: 'Казань', invite_token: 'k7f2q9xa' },
     't-2': { destination: 'Иркутск', invite_token: 'b4k1l2m9' },
     't-3': { destination: null, invite_token: 'a1t2a3y4' },
+    't-4': { destination: 'Санкт-Петербург', invite_token: 'piter2027' },
   } as Record<string, { destination: string | null; invite_token: string }>,
 
   members: {
@@ -76,12 +77,41 @@ export const db = {
       { user_id: 'u-5', nickname: 'Аня', avatar_emoji: '🐧', role: 'organizer' },
       { user_id: 'u-1', nickname: 'Даша', avatar_emoji: '🦊', role: 'member' },
     ],
+    't-4': [
+      { user_id: 'u-3', nickname: 'Оля', avatar_emoji: '🐳', role: 'organizer' },
+      { user_id: 'u-4', nickname: 'Миша', avatar_emoji: '🐻', role: 'member' },
+    ],
     't-3': [
       { user_id: 'u-1', nickname: 'Даша', avatar_emoji: '🦊', role: 'organizer' },
       { user_id: 'u-4', nickname: 'Миша', avatar_emoji: '🐻', role: 'member' },
       { user_id: 'u-2', nickname: 'Женя', avatar_emoji: '🐼', role: 'member' },
     ],
   } as Record<string, Member[]>,
+
+  invites: {
+    k7f2q9xa: { tripId: 't-1', password: 'kazan' },
+    b4k1l2m9: { tripId: 't-2', password: 'baikal' },
+    a1t2a3y4: { tripId: 't-3', password: 'altai' },
+    piter2027: { tripId: 't-4', password: 'nevsky' },
+  } as Record<string, { tripId: string; password: string }>,
+
+  hiddenTrips: [
+    {
+      id: 't-4',
+      title: 'Питер белыми ночами',
+      start_date: '2027-06-20',
+      end_date: '2027-06-24',
+      cover_theme: 'hills',
+      my_role: 'member',
+      members_count: 2,
+      members_preview: [
+        { user_id: 'u-3', nickname: 'Оля', avatar_emoji: '🐳' },
+        { user_id: 'u-4', nickname: 'Миша', avatar_emoji: '🐻' },
+      ],
+    },
+  ] as TripListItem[],
+
+  joinAttempts: {} as Record<string, { failed: number; lockedUntil: number }>,
 
   session: { userId: null as string | null, accessValid: false },
 }

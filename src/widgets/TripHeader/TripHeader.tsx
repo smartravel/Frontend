@@ -4,7 +4,9 @@ import LinkIcon from '@mui/icons-material/Link'
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined'
 import {
   AvatarGroup,
+  Box,
   Button,
+  ButtonBase,
   Chip,
   Link,
   Paper,
@@ -17,10 +19,11 @@ import {
 import { useState } from 'react'
 import { Link as RouterLink, useLocation } from 'react-router'
 import type { Member, Trip } from '../../entities/trip'
+import type { SocketStatus } from '../../shared/api'
 import { daysUntil, formatDateRange, pluralize } from '../../shared/lib/date'
 import { EmojiAvatar } from '../../shared/ui'
+import { MembersDialog } from './MembersDialog'
 
-// Вкладки страницы поездки: адрес вкладки и её название
 const TABS = [
   { path: 'route', label: 'Маршрут' },
   { path: 'checklist', label: 'Чеклист' },
@@ -37,16 +40,24 @@ function getDaysLabel(trip: Trip) {
   return 'Поездка завершилась'
 }
 
+const SOCKET_LABELS: Record<SocketStatus, { text: string; color: string }> = {
+  open: { text: 'Изменения видны всем сразу', color: 'primary.main' },
+  connecting: { text: 'Подключаемся…', color: 'text.disabled' },
+  reconnecting: { text: 'Нет связи, переподключаемся…', color: 'secondary.main' },
+}
+
 type TripHeaderProps = {
   trip: Trip
   members: Member[]
+  socketStatus: SocketStatus
 }
 
-export function TripHeader({ trip, members }: TripHeaderProps) {
+export function TripHeader({ trip, members, socketStatus }: TripHeaderProps) {
   const location = useLocation()
   const [copied, setCopied] = useState(false)
+  const [membersOpen, setMembersOpen] = useState(false)
+  const socketLabel = SOCKET_LABELS[socketStatus]
 
-  // Активная вкладка — последний кусок адреса: /trips/t-1/checklist → 'checklist'
   const currentTab = location.pathname.split('/').at(-1)
   const activeTab = TABS.some((tab) => tab.path === currentTab) ? currentTab : false
 
@@ -109,30 +120,47 @@ export function TripHeader({ trip, members }: TripHeaderProps) {
                 size="small"
                 sx={{ bgcolor: 'secondary.light', color: 'secondary.dark', fontWeight: 700 }}
               />
+              <Stack
+                direction="row"
+                spacing={0.75}
+                role="status"
+                sx={{ alignItems: 'center', color: 'text.secondary' }}
+              >
+                <Box
+                  sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: socketLabel.color }}
+                />
+                <Typography variant="body2">{socketLabel.text}</Typography>
+              </Stack>
             </Stack>
           </Stack>
 
           <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-            <AvatarGroup
-              max={5}
-              total={trip.members_count}
-              sx={{
-                '& .MuiAvatar-root': {
-                  width: 38,
-                  height: 38,
-                  fontSize: 15,
-                  borderColor: 'background.paper',
-                },
-              }}
+            <ButtonBase
+              onClick={() => setMembersOpen(true)}
+              aria-label={`Участники: ${trip.members_count}. Показать список`}
+              sx={{ borderRadius: '22px', p: 0.5 }}
             >
-              {members.map((member) => (
-                <EmojiAvatar
-                  key={member.user_id}
-                  emoji={member.avatar_emoji}
-                  label={member.nickname}
-                />
-              ))}
-            </AvatarGroup>
+              <AvatarGroup
+                max={5}
+                total={trip.members_count}
+                sx={{
+                  '& .MuiAvatar-root': {
+                    width: 38,
+                    height: 38,
+                    fontSize: 15,
+                    borderColor: 'background.paper',
+                  },
+                }}
+              >
+                {members.map((member) => (
+                  <EmojiAvatar
+                    key={member.user_id}
+                    emoji={member.avatar_emoji}
+                    label={member.nickname}
+                  />
+                ))}
+              </AvatarGroup>
+            </ButtonBase>
             {trip.invite_token && (
               <Button
                 variant="outlined"
@@ -163,6 +191,8 @@ export function TripHeader({ trip, members }: TripHeaderProps) {
           ))}
         </Tabs>
       </Stack>
+
+      <MembersDialog open={membersOpen} onClose={() => setMembersOpen(false)} members={members} />
 
       <Snackbar
         open={copied}

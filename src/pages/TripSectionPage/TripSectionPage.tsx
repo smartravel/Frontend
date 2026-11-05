@@ -2,6 +2,7 @@ import ConstructionOutlinedIcon from '@mui/icons-material/ConstructionOutlined'
 import { Box, Paper, Stack, Typography } from '@mui/material'
 import { useTripContext } from '../../entities/trip'
 
+// Временная заглушка вкладки: разделы появятся в следующих задачах
 export function TripSectionPage({ title }: { title: string }) {
   const { trip } = useTripContext()
 

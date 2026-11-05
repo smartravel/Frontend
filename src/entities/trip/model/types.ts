@@ -36,6 +36,11 @@ export type Member = MemberPreview & {
   role: TripRole
 }
 
+export type JoinTripRequest = {
+  invite_token: string
+  password: string
+}
+
 export type CreateTripRequest = {
   title: string
   destination?: string

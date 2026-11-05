@@ -3,13 +3,15 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { registerSchema, type RegisterFormValues } from '../model/schemas'
 import { Alert, Button, Stack, TextField } from '@mui/material'
 import { useSession } from '../../../entities/user'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
+import { getRedirectPath } from '../../../shared/lib/redirect'
 import { ApiError } from '../../../shared/api'
-import { PasswordField } from './PasswordField'
+import { PasswordField } from '../../../shared/ui'
 
 export function RegisterForm() {
   const register = useSession((state) => state.register)
   const navigate = useNavigate()
+  const location = useLocation()
 
   const {
     control,
@@ -28,7 +30,7 @@ export function RegisterForm() {
         password: values.password,
         nickname: values.nickname,
       })
-      navigate('/')
+      navigate(getRedirectPath(location.state), { replace: true })
     } catch (e) {
       const message = e instanceof ApiError ? e.message : 'Неизвестная ошибка'
       setError('root', { message: message })

@@ -4,6 +4,7 @@ import { LoginPage } from '../../pages/LoginPage'
 import { TripsPage } from '../../pages/TripsPage'
 import { TripPage } from '../../pages/TripPage'
 import { TripSectionPage } from '../../pages/TripSectionPage'
+import { JoinTripPage } from '../../pages/JoinTripPage'
 import { NotFoundPage } from '../../pages/NotFoundPage'
 import { RegisterPage } from '../../pages/RegisterPage'
 import { ProfilePage } from '../../pages/ProfilePage'
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
         children: [
           { path: '/', element: <TripsPage /> },
           { path: '/profile', element: <ProfilePage /> },
+          { path: '/join/:inviteToken', element: <JoinTripPage /> },
           {
             path: '/trips/:tripId',
             element: <TripPage />,

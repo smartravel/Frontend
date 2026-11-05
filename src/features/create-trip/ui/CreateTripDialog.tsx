@@ -17,7 +17,7 @@ import { tripApi } from '../../../entities/trip'
 import { ApiError } from '../../../shared/api'
 import { createTripSchema, type CreateTripFormValues } from '../model/shema'
 import { CoverPicker } from './CoverPicker'
-import { PasswordField } from '../../auth/ui/PasswordField'
+import { PasswordField } from '../../../shared/ui'
 
 type CreateTripDialogProps = {
   open: boolean
@@ -27,7 +27,6 @@ type CreateTripDialogProps = {
 export function CreateTripDialog({ open, onClose }: CreateTripDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      {/* Форма внутри отдельного компонента: при каждом открытии она создаётся заново и пустая */}
       <CreateTripForm onCancel={onClose} />
     </Dialog>
   )
