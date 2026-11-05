@@ -19,6 +19,23 @@ export type TripListItem = {
   cover_theme: CoverTheme
 }
 
+export type Trip = {
+  id: string
+  title: string
+  destination: string | null
+  start_date: string
+  end_date: string
+  cover_theme: CoverTheme
+  my_role: TripRole
+  members_count: number
+  days_left: number
+  invite_token?: string
+}
+
+export type Member = MemberPreview & {
+  role: TripRole
+}
+
 export type CreateTripRequest = {
   title: string
   destination?: string

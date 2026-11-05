@@ -1,4 +1,4 @@
-import type { TripListItem } from '../../entities/trip'
+import type { Member, TripListItem } from '../../entities/trip'
 import type { User } from '../../entities/user'
 
 type MockUser = User & { password: string }
@@ -57,6 +57,31 @@ export const db = {
       ],
     },
   ] as TripListItem[],
+
+  tripDetails: {
+    't-1': { destination: 'Казань', invite_token: 'k7f2q9xa' },
+    't-2': { destination: 'Иркутск', invite_token: 'b4k1l2m9' },
+    't-3': { destination: null, invite_token: 'a1t2a3y4' },
+  } as Record<string, { destination: string | null; invite_token: string }>,
+
+  members: {
+    't-1': [
+      { user_id: 'u-1', nickname: 'Даша', avatar_emoji: '🦊', role: 'organizer' },
+      { user_id: 'u-2', nickname: 'Женя', avatar_emoji: '🐼', role: 'member' },
+      { user_id: 'u-3', nickname: 'Оля', avatar_emoji: '🐳', role: 'member' },
+      { user_id: 'u-4', nickname: 'Миша', avatar_emoji: '🐻', role: 'member' },
+      { user_id: 'u-5', nickname: 'Аня', avatar_emoji: '🐧', role: 'member' },
+    ],
+    't-2': [
+      { user_id: 'u-5', nickname: 'Аня', avatar_emoji: '🐧', role: 'organizer' },
+      { user_id: 'u-1', nickname: 'Даша', avatar_emoji: '🦊', role: 'member' },
+    ],
+    't-3': [
+      { user_id: 'u-1', nickname: 'Даша', avatar_emoji: '🦊', role: 'organizer' },
+      { user_id: 'u-4', nickname: 'Миша', avatar_emoji: '🐻', role: 'member' },
+      { user_id: 'u-2', nickname: 'Женя', avatar_emoji: '🐼', role: 'member' },
+    ],
+  } as Record<string, Member[]>,
 
   session: { userId: null as string | null, accessValid: false },
 }

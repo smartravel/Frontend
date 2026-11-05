@@ -6,8 +6,34 @@ import type { CreateTripRequest, TripListItem } from '../../entities/trip'
 
 const url = (path: string) => `${API_URL}${path}`
 const unauthorized = () => HttpResponse.json({ detail: 'Не авторизован' }, { status: 401 })
-// Сегодняшняя дата в формате YYYY-MM-DD — так же, как даты поездок
 const today = () => new Date().toISOString().slice(0, 10)
+
+const FORBIDDEN_TRIP_ID = 't-secret'
+
+function findTrip(tripId: string) {
+  if (tripId === FORBIDDEN_TRIP_ID) {
+    return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+  }
+  const trip = db.trips.find((t) => t.id === tripId)
+  if (!trip) return HttpResponse.json({ detail: 'Поездка не найдена' }, { status: 404 })
+  return trip
+}
+
+function tripDetail(trip: TripListItem) {
+  const { members_preview: _preview, ...rest } = trip
+  const details = db.tripDetails[trip.id]
+  const daysLeft = Math.round(
+    (new Date(`${trip.start_date}T00:00:00`).getTime() - new Date().setHours(0, 0, 0, 0)) /
+      86_400_000,
+  )
+  return {
+    ...rest,
+    destination: details?.destination ?? null,
+    days_left: daysLeft,
+    // Ссылку-приглашение видит только организатор
+    invite_token: trip.my_role === 'organizer' ? details?.invite_token : undefined,
+  }
+}
 
 const tripHandlers = [
   http.get(url('/trips'), async ({ request }) => {
@@ -54,10 +80,35 @@ const tripHandlers = [
       ],
     }
     db.trips.unshift(trip)
-    return HttpResponse.json(
-      { ...trip, destination: data.destination ?? null, invite_token: 'k7f2q9xa' },
-      { status: 201 },
-    )
+    db.tripDetails[trip.id] = {
+      destination: data.destination ?? null,
+      invite_token: crypto.randomUUID().slice(0, 8),
+    }
+    db.members[trip.id] = [
+      {
+        user_id: user.id,
+        nickname: user.nickname,
+        avatar_emoji: user.avatar_emoji,
+        role: 'organizer',
+      },
+    ]
+    return HttpResponse.json(tripDetail(trip), { status: 201 })
+  }),
+
+  http.get(url('/trips/:tripId'), async ({ params }) => {
+    await delay(400)
+    if (!currentUser()) return unauthorized()
+    const found = findTrip(String(params.tripId))
+    if (found instanceof Response) return found
+    return HttpResponse.json(tripDetail(found))
+  }),
+
+  http.get(url('/trips/:tripId/members'), async ({ params }) => {
+    await delay(300)
+    if (!currentUser()) return unauthorized()
+    const found = findTrip(String(params.tripId))
+    if (found instanceof Response) return found
+    return HttpResponse.json(db.members[found.id] ?? [])
   }),
 ]
 
