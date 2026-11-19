@@ -41,9 +41,10 @@ export function ItineraryItem({
     data: { type: 'itinerary-item', dayDate },
   })
 
-  const badgeSx = dayIndex % 2 === 1
-    ? { bgcolor: 'secondary.main', color: 'text.primary' }
-    : { bgcolor: 'primary.main', color: 'primary.contrastText' }
+  const badgeSx =
+    dayIndex % 2 === 1
+      ? { bgcolor: 'secondary.main', color: 'text.primary' }
+      : { bgcolor: 'primary.main', color: 'primary.contrastText' }
 
   return (
     <Paper
@@ -113,7 +114,11 @@ export function ItineraryItem({
         )}
       </Stack>
       <Stack direction="row" spacing={0} sx={{ flex: 'none' }}>
-        <IconButton aria-label={`Редактировать: ${item.title}`} onClick={() => onEdit(item)} size="large">
+        <IconButton
+          aria-label={`Редактировать: ${item.title}`}
+          onClick={() => onEdit(item)}
+          size="large"
+        >
           <EditOutlinedIcon fontSize="small" />
         </IconButton>
         <IconButton

@@ -3,7 +3,17 @@ import type { LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../
 import { API_URL } from '../../shared/config/env'
 import { currentUser, db, startSession, toPublicUser } from './db'
 import type { CreateTripRequest, JoinTripRequest, TripListItem } from '../../entities/trip'
-import type { CreateItineraryRequest, ItineraryItem, UpdateItineraryRequest } from '../../entities/itinerary'
+import type {
+  CreateItineraryRequest,
+  ItineraryItem,
+  UpdateItineraryRequest,
+} from '../../entities/itinerary'
+import type {
+  ChecklistItem,
+  ChecklistScope,
+  CreateChecklistRequest,
+  UpdateChecklistRequest,
+} from '../../entities/checklist'
 
 const url = (path: string) => `${API_URL}${path}`
 const unauthorized = () => HttpResponse.json({ detail: 'Не авторизован' }, { status: 401 })
@@ -64,6 +74,159 @@ const GUESTS = [
   { nickname: 'Вика', avatar_emoji: '🦄' },
 ]
 
+function publicChecklistItem(item: ChecklistItem & { owner_id: string | null }): ChecklistItem {
+  return {
+    id: item.id,
+    title: item.title,
+    scope: item.scope,
+    is_checked: item.is_checked,
+    assignee_id: item.assignee_id,
+  }
+}
+
+const checklistHandlers = [
+  http.get(url('/trips/:tripId/checklist'), async ({ params, request }) => {
+    await delay(250)
+    const user = currentUser()
+    if (!user) return unauthorized()
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    if (!db.members[tripId]?.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+
+    const scope = new URL(request.url).searchParams.get('scope') as ChecklistScope | null
+    if (scope !== 'shared' && scope !== 'personal') {
+      return HttpResponse.json(
+        { detail: 'Укажите тип списка: shared или personal' },
+        { status: 422 },
+      )
+    }
+    const records = (db.checklist[tripId] ??= [])
+    const visible = records.filter(
+      (item) => item.scope === scope && (scope === 'shared' || item.owner_id === user.id),
+    )
+    return HttpResponse.json(visible.map(publicChecklistItem))
+  }),
+
+  http.post(url('/trips/:tripId/checklist'), async ({ params, request }) => {
+    await delay(250)
+    const user = currentUser()
+    if (!user) return unauthorized()
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    const members = db.members[tripId] ?? []
+    if (!members.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+
+    const data = (await request.json()) as CreateChecklistRequest
+    if (!data.title?.trim() || (data.scope !== 'shared' && data.scope !== 'personal')) {
+      return HttpResponse.json(
+        {
+          detail: [
+            {
+              loc: ['body', !data.title?.trim() ? 'title' : 'scope'],
+              msg: 'Укажите название и тип списка',
+              type: 'value_error',
+            },
+          ],
+        },
+        { status: 422 },
+      )
+    }
+    if (
+      data.scope === 'shared' &&
+      data.assignee_id &&
+      !members.some((member) => member.user_id === data.assignee_id)
+    ) {
+      return HttpResponse.json(
+        { detail: 'Ответственный не является участником поездки' },
+        { status: 422 },
+      )
+    }
+
+    const record: ChecklistItem & { owner_id: string | null } = {
+      id: crypto.randomUUID(),
+      title: data.title.trim(),
+      scope: data.scope,
+      is_checked: false,
+      assignee_id: data.scope === 'shared' ? (data.assignee_id ?? null) : null,
+      owner_id: data.scope === 'personal' ? user.id : null,
+    }
+    const records = (db.checklist[tripId] ??= [])
+    records.push(record)
+    return HttpResponse.json(publicChecklistItem(record), { status: 201 })
+  }),
+
+  http.patch(url('/trips/:tripId/checklist/:itemId'), async ({ params, request }) => {
+    await delay(200)
+    const user = currentUser()
+    if (!user) return unauthorized()
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    const members = db.members[tripId] ?? []
+    if (!members.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+
+    const records = (db.checklist[tripId] ??= [])
+    const item = records.find(
+      (entry) =>
+        entry.id === String(params.itemId) &&
+        (entry.scope === 'shared' || entry.owner_id === user.id),
+    )
+    if (!item) return HttpResponse.json({ detail: 'Пункт чеклиста не найден' }, { status: 404 })
+
+    const data = (await request.json()) as UpdateChecklistRequest
+    if (data.title !== undefined && !data.title.trim()) {
+      return HttpResponse.json(
+        {
+          detail: [
+            { loc: ['body', 'title'], msg: 'Название не может быть пустым', type: 'value_error' },
+          ],
+        },
+        { status: 422 },
+      )
+    }
+    if (data.assignee_id && !members.some((member) => member.user_id === data.assignee_id)) {
+      return HttpResponse.json(
+        { detail: 'Ответственный не является участником поездки' },
+        { status: 422 },
+      )
+    }
+    Object.assign(item, data)
+    if (data.title !== undefined) item.title = data.title.trim()
+    if (item.scope === 'personal') item.assignee_id = null
+    return HttpResponse.json(publicChecklistItem(item))
+  }),
+
+  http.delete(url('/trips/:tripId/checklist/:itemId'), async ({ params }) => {
+    await delay(200)
+    const user = currentUser()
+    if (!user) return unauthorized()
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    if (!db.members[tripId]?.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+
+    const records = (db.checklist[tripId] ??= [])
+    const index = records.findIndex(
+      (entry) =>
+        entry.id === String(params.itemId) &&
+        (entry.scope === 'shared' || entry.owner_id === user.id),
+    )
+    if (index < 0) return HttpResponse.json({ detail: 'Пункт чеклиста не найден' }, { status: 404 })
+    records.splice(index, 1)
+    return new HttpResponse(null, { status: 204 })
+  }),
+]
+
 const tripHandlers = [
   http.get(url('/trips/:tripId/itinerary'), async ({ params }) => {
     await delay(350)
@@ -76,9 +239,9 @@ const tripHandlers = [
       return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
     }
     const items = (db.itinerary[tripId] ??= [])
-    return HttpResponse.json([...items].sort((a, b) =>
-      a.day_date.localeCompare(b.day_date) || a.position - b.position,
-    ))
+    return HttpResponse.json(
+      [...items].sort((a, b) => a.day_date.localeCompare(b.day_date) || a.position - b.position),
+    )
   }),
 
   http.post(url('/trips/:tripId/itinerary'), async ({ params, request }) => {
@@ -118,7 +281,9 @@ const tripHandlers = [
       note: data.note ?? null,
       lat: data.lat ?? null,
       lng: data.lng ?? null,
-      position: data.position ?? (dayItems.length ? Math.max(...dayItems.map((item) => item.position)) + 1 : 0),
+      position:
+        data.position ??
+        (dayItems.length ? Math.max(...dayItems.map((item) => item.position)) + 1 : 0),
     }
     items.push(created)
     return HttpResponse.json(created, { status: 201 })
@@ -142,7 +307,9 @@ const tripHandlers = [
     const data = (await request.json()) as UpdateItineraryRequest
     if (data.title !== undefined && !data.title.trim()) {
       return HttpResponse.json(
-        { detail: [{ loc: ['body', 'title'], msg: 'Укажите название места', type: 'value_error' }] },
+        {
+          detail: [{ loc: ['body', 'title'], msg: 'Укажите название места', type: 'value_error' }],
+        },
         { status: 422 },
       )
     }
@@ -151,8 +318,12 @@ const tripHandlers = [
     Object.assign(item, data)
     if (data.title !== undefined) item.title = data.title.trim()
     if (data.day_date && data.day_date !== previousDate && data.position === undefined) {
-      const targetItems = items.filter((entry) => entry.day_date === data.day_date && entry.id !== item.id)
-      item.position = targetItems.length ? Math.max(...targetItems.map((entry) => entry.position)) + 1 : 0
+      const targetItems = items.filter(
+        (entry) => entry.day_date === data.day_date && entry.id !== item.id,
+      )
+      item.position = targetItems.length
+        ? Math.max(...targetItems.map((entry) => entry.position)) + 1
+        : 0
     }
     return HttpResponse.json(item)
   }),
@@ -170,7 +341,8 @@ const tripHandlers = [
 
     const items = (db.itinerary[tripId] ??= [])
     const itemIndex = items.findIndex((entry) => entry.id === String(params.itemId))
-    if (itemIndex < 0) return HttpResponse.json({ detail: 'Пункт маршрута не найден' }, { status: 404 })
+    if (itemIndex < 0)
+      return HttpResponse.json({ detail: 'Пункт маршрута не найден' }, { status: 404 })
     items.splice(itemIndex, 1)
     return new HttpResponse(null, { status: 204 })
   }),
@@ -315,6 +487,7 @@ const tripHandlers = [
 export const handlers = [
   ...socketHandlers,
   ...tripHandlers,
+  ...checklistHandlers,
   http.post(url('/auth/login'), async ({ request }) => {
     await delay(400)
     const { email, password } = (await request.json()) as LoginRequest

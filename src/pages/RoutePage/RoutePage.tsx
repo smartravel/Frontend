@@ -401,12 +401,15 @@ function RouteDaySection({
         transition: 'border-color 150ms ease, background-color 150ms ease',
       }}
     >
-      <Stack direction="row" sx={{
-        display:'flex',
-        justifyContent:"space-between",
-        gap:1.5,
-        alignItems:'center'
-      }}>
+      <Stack
+        direction="row"
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 1.5,
+          alignItems: 'center',
+        }}
+      >
         <Typography
           component="h2"
           sx={{

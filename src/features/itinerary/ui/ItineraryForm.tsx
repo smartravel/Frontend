@@ -1,5 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material'
+import {
+  Alert,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  TextField,
+} from '@mui/material'
 import type { CreateItineraryRequest, ItineraryItem } from '../../../entities/itinerary'
 
 type ItineraryFormProps = {
@@ -68,7 +77,9 @@ export function ItineraryForm({
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2.25} sx={{ pt: 1 }}>
-            {(validationError || error) && <Alert severity="error">{validationError || error}</Alert>}
+            {(validationError || error) && (
+              <Alert severity="error">{validationError || error}</Alert>
+            )}
             <TextField
               autoFocus
               required

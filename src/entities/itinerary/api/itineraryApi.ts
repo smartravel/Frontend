@@ -1,9 +1,5 @@
 import { api } from '../../../shared/api'
-import type {
-  CreateItineraryRequest,
-  ItineraryItem,
-  UpdateItineraryRequest,
-} from '../model/types'
+import type { CreateItineraryRequest, ItineraryItem, UpdateItineraryRequest } from '../model/types'
 
 export const itineraryApi = {
   getList: (tripId: string) => api.get<ItineraryItem[]>(`/trips/${tripId}/itinerary`),
