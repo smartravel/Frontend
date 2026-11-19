@@ -1,4 +1,5 @@
 import type { Member, TripListItem } from '../../entities/trip'
+import type { ItineraryItem } from '../../entities/itinerary'
 import type { User } from '../../entities/user'
 
 type MockUser = User & { password: string }
@@ -110,6 +111,51 @@ export const db = {
       ],
     },
   ] as TripListItem[],
+
+  itinerary: {
+    't-1': [
+      {
+        id: 'route-1',
+        day_date: '2026-11-21',
+        title: 'Казанский кремль',
+        time: '10:00',
+        note: 'Билеты на башню купить заранее',
+        lat: 55.7985,
+        lng: 49.1064,
+        position: 0,
+      },
+      {
+        id: 'route-2',
+        day_date: '2026-11-21',
+        title: 'Улица Баумана',
+        time: '13:30',
+        note: 'Обед и прогулка',
+        lat: 55.7879,
+        lng: 49.1221,
+        position: 1,
+      },
+      {
+        id: 'route-3',
+        day_date: '2026-11-21',
+        title: 'Набережная Казанки',
+        time: '19:00',
+        note: 'Закат и фото',
+        lat: 55.8094,
+        lng: 49.1262,
+        position: 2,
+      },
+      {
+        id: 'route-4',
+        day_date: '2026-11-22',
+        title: 'Старо-Татарская слобода',
+        time: '11:00',
+        note: 'Попробовать эчпочмаки',
+        lat: 55.7775,
+        lng: 49.1192,
+        position: 0,
+      },
+    ],
+  } as Record<string, ItineraryItem[]>,
 
   joinAttempts: {} as Record<string, { failed: number; lockedUntil: number }>,
 

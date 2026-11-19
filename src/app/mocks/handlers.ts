@@ -3,6 +3,7 @@ import type { LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../
 import { API_URL } from '../../shared/config/env'
 import { currentUser, db, startSession, toPublicUser } from './db'
 import type { CreateTripRequest, JoinTripRequest, TripListItem } from '../../entities/trip'
+import type { CreateItineraryRequest, ItineraryItem, UpdateItineraryRequest } from '../../entities/itinerary'
 
 const url = (path: string) => `${API_URL}${path}`
 const unauthorized = () => HttpResponse.json({ detail: 'Не авторизован' }, { status: 401 })
@@ -64,6 +65,115 @@ const GUESTS = [
 ]
 
 const tripHandlers = [
+  http.get(url('/trips/:tripId/itinerary'), async ({ params }) => {
+    await delay(350)
+    const user = currentUser()
+    if (!user) return unauthorized()
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    if (!db.members[tripId]?.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+    const items = (db.itinerary[tripId] ??= [])
+    return HttpResponse.json([...items].sort((a, b) =>
+      a.day_date.localeCompare(b.day_date) || a.position - b.position,
+    ))
+  }),
+
+  http.post(url('/trips/:tripId/itinerary'), async ({ params, request }) => {
+    await delay(350)
+    const user = currentUser()
+    if (!user) return unauthorized()
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    if (!db.members[tripId]?.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+
+    const data = (await request.json()) as CreateItineraryRequest
+    if (!data.day_date || !data.title?.trim()) {
+      return HttpResponse.json(
+        {
+          detail: [
+            {
+              loc: ['body', !data.day_date ? 'day_date' : 'title'],
+              msg: !data.day_date ? 'Укажите дату' : 'Укажите название места',
+              type: 'value_error',
+            },
+          ],
+        },
+        { status: 422 },
+      )
+    }
+
+    const items = (db.itinerary[tripId] ??= [])
+    const dayItems = items.filter((item) => item.day_date === data.day_date)
+    const created: ItineraryItem = {
+      id: crypto.randomUUID(),
+      day_date: data.day_date,
+      title: data.title.trim(),
+      time: data.time ?? null,
+      note: data.note ?? null,
+      lat: data.lat ?? null,
+      lng: data.lng ?? null,
+      position: data.position ?? (dayItems.length ? Math.max(...dayItems.map((item) => item.position)) + 1 : 0),
+    }
+    items.push(created)
+    return HttpResponse.json(created, { status: 201 })
+  }),
+
+  http.patch(url('/trips/:tripId/itinerary/:itemId'), async ({ params, request }) => {
+    await delay(300)
+    const user = currentUser()
+    if (!user) return unauthorized()
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    if (!db.members[tripId]?.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+
+    const items = (db.itinerary[tripId] ??= [])
+    const item = items.find((entry) => entry.id === String(params.itemId))
+    if (!item) return HttpResponse.json({ detail: 'Пункт маршрута не найден' }, { status: 404 })
+
+    const data = (await request.json()) as UpdateItineraryRequest
+    if (data.title !== undefined && !data.title.trim()) {
+      return HttpResponse.json(
+        { detail: [{ loc: ['body', 'title'], msg: 'Укажите название места', type: 'value_error' }] },
+        { status: 422 },
+      )
+    }
+
+    const previousDate = item.day_date
+    Object.assign(item, data)
+    if (data.title !== undefined) item.title = data.title.trim()
+    if (data.day_date && data.day_date !== previousDate && data.position === undefined) {
+      const targetItems = items.filter((entry) => entry.day_date === data.day_date && entry.id !== item.id)
+      item.position = targetItems.length ? Math.max(...targetItems.map((entry) => entry.position)) + 1 : 0
+    }
+    return HttpResponse.json(item)
+  }),
+
+  http.delete(url('/trips/:tripId/itinerary/:itemId'), async ({ params }) => {
+    await delay(300)
+    const user = currentUser()
+    if (!user) return unauthorized()
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    if (!db.members[tripId]?.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+
+    const items = (db.itinerary[tripId] ??= [])
+    const itemIndex = items.findIndex((entry) => entry.id === String(params.itemId))
+    if (itemIndex < 0) return HttpResponse.json({ detail: 'Пункт маршрута не найден' }, { status: 404 })
+    items.splice(itemIndex, 1)
+    return new HttpResponse(null, { status: 204 })
+  }),
   http.get(url('/trips'), async ({ request }) => {
     await delay(500)
     if (!currentUser()) return unauthorized()

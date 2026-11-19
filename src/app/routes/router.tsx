@@ -4,6 +4,7 @@ import { LoginPage } from '../../pages/LoginPage'
 import { TripsPage } from '../../pages/TripsPage'
 import { TripPage } from '../../pages/TripPage'
 import { TripSectionPage } from '../../pages/TripSectionPage'
+import { RoutePage } from '../../pages/RoutePage'
 import { JoinTripPage } from '../../pages/JoinTripPage'
 import { NotFoundPage } from '../../pages/NotFoundPage'
 import { RegisterPage } from '../../pages/RegisterPage'
@@ -33,7 +34,7 @@ export const router = createBrowserRouter([
             element: <TripPage />,
             children: [
               { index: true, element: <Navigate to="route" replace /> },
-              { path: 'route', element: <TripSectionPage title="Маршрут" /> },
+              { path: 'route', element: <RoutePage /> },
               { path: 'checklist', element: <TripSectionPage title="Чеклист" /> },
               { path: 'polls', element: <TripSectionPage title="Опросы" /> },
               { path: 'expenses', element: <TripSectionPage title="Расходы" /> },
