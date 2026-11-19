@@ -2,25 +2,59 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import DeleteOutlineIcon from '@mui/icons-material/Delete'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { Box, IconButton, Paper, Stack, Typography } from '@mui/material'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { ItineraryItem as ItineraryItemType } from '../../../entities/itinerary'
 
 type ItineraryItemProps = {
   item: ItineraryItemType
   index: number
   dayIndex: number
+  dayDate: string
   onEdit: (item: ItineraryItemType) => void
   onDelete: (item: ItineraryItemType) => void
   deleting?: boolean
+  dragDisabled?: boolean
 }
 
-export function ItineraryItem({ item, index, dayIndex, onEdit, onDelete, deleting }: ItineraryItemProps) {
+export function ItineraryItem({
+  item,
+  index,
+  dayIndex,
+  dayDate,
+  onEdit,
+  onDelete,
+  deleting,
+  dragDisabled = false,
+}: ItineraryItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: item.id,
+    disabled: dragDisabled,
+    data: { type: 'itinerary-item', dayDate },
+  })
+
   const badgeSx = dayIndex % 2 === 1
     ? { bgcolor: 'secondary.main', color: 'text.primary' }
     : { bgcolor: 'primary.main', color: 'primary.contrastText' }
 
   return (
     <Paper
+      ref={setNodeRef}
       variant="outlined"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        zIndex: isDragging ? 2 : 'auto',
+      }}
       sx={{
         display: 'flex',
         alignItems: 'center',
@@ -28,12 +62,27 @@ export function ItineraryItem({ item, index, dayIndex, onEdit, onDelete, deletin
         p: 1.75,
         borderRadius: '14px',
         bgcolor: '#FBFCFD',
-        borderColor: 'divider',
+        borderColor: isDragging ? 'primary.main' : 'divider',
         transition: 'border-color 150ms ease, box-shadow 150ms ease',
         '&:hover': { borderColor: 'primary.light' },
       }}
     >
-      <DragIndicatorIcon aria-hidden="true" sx={{ color: 'grey.400', flex: 'none', fontSize: 19 }} />
+      <IconButton
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label={`Переместить: ${item.title}`}
+        size="small"
+        disabled={dragDisabled}
+        sx={{
+          color: 'grey.400',
+          flex: 'none',
+          cursor: dragDisabled ? 'default' : isDragging ? 'grabbing' : 'grab',
+          touchAction: 'none',
+        }}
+      >
+        <DragIndicatorIcon aria-hidden="true" sx={{ fontSize: 19 }} />
+      </IconButton>
       <Box
         sx={{
           width: 28,

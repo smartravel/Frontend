@@ -1,8 +1,34 @@
 import AddIcon from '@mui/icons-material/Add'
 import MapOutlinedIcon from '@mui/icons-material/MapOutlined'
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined'
-import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined'
-import { Alert, Box, Button, CircularProgress, Paper, Snackbar, Stack, Typography } from '@mui/material'
+import RefreshOutlinedIcon from '@mui/icons-material/Refresh'
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  pointerWithin,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Paper,
+  Snackbar,
+  Stack,
+  Typography,
+} from '@mui/material'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router'
 import {
@@ -18,6 +44,23 @@ type TripDay = {
   date: string
   label: string
   items: ItineraryItem[]
+}
+
+type DropData = {
+  type?: 'day' | 'itinerary-item'
+  dayDate?: string
+}
+
+const itineraryCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args)
+  const itemCollision = pointerCollisions.find((collision) => {
+    const container = args.droppableContainers.find((entry) => entry.id === collision.id)
+    return (container?.data.current as DropData | undefined)?.type === 'itinerary-item'
+  })
+
+  if (itemCollision) return [itemCollision]
+  if (pointerCollisions.length > 0) return pointerCollisions
+  return closestCenter(args)
 }
 
 function addDays(isoDate: string, amount: number) {
@@ -42,9 +85,7 @@ function createTripDays(startDate: string, endDate: string, items: ItineraryItem
     days.push({
       date,
       label: formatDayLabel(date),
-      items: items
-        .filter((item) => item.day_date === date)
-        .sort((a, b) => a.position - b.position),
+      items: items.filter((item) => item.day_date === date).sort((a, b) => a.position - b.position),
     })
     date = addDays(date, 1)
   }
@@ -66,9 +107,15 @@ export function RoutePage() {
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null)
   const [selectedDate, setSelectedDate] = useState(trip.start_date)
   const [saving, setSaving] = useState(false)
+  const [savingOrder, setSavingOrder] = useState(false)
   const [formError, setFormError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [snackbar, setSnackbar] = useState('')
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   const loadItems = useCallback(async () => {
     setLoading(true)
@@ -142,13 +189,102 @@ export function RoutePage() {
     }
   }
 
+  async function handleDragEnd({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id || savingOrder) return
+
+    const draggedItem = items.find((item) => item.id === String(active.id))
+    if (!draggedItem) return
+
+    const overItem = items.find((item) => item.id === String(over.id))
+    const overData = over.data.current as DropData | undefined
+    const targetDate = overItem?.day_date ?? overData?.dayDate
+    if (!targetDate || targetDate === undefined) return
+
+    const sourceDate = draggedItem.day_date
+    const sourceDayItems = items
+      .filter((item) => item.day_date === sourceDate)
+      .sort((a, b) => a.position - b.position)
+    const targetDayItems =
+      sourceDate === targetDate
+        ? sourceDayItems
+        : items
+            .filter((item) => item.day_date === targetDate)
+            .sort((a, b) => a.position - b.position)
+
+    const sourceNext = [...sourceDayItems]
+    const sourceIndex = sourceNext.findIndex((item) => item.id === draggedItem.id)
+    if (sourceIndex < 0) return
+    sourceNext.splice(sourceIndex, 1)
+
+    const targetNext = sourceDate === targetDate ? sourceNext : [...targetDayItems]
+    let targetIndex = targetNext.length
+
+    if (overItem) {
+      const overIndex = targetNext.findIndex((item) => item.id === overItem.id)
+      if (overIndex >= 0) {
+        const translated = active.rect.current.translated
+        const isAfter = Boolean(translated && translated.top > over.rect.top + over.rect.height / 2)
+        targetIndex = overIndex + (isAfter ? 1 : 0)
+      }
+    }
+
+    targetNext.splice(targetIndex, 0, { ...draggedItem, day_date: targetDate })
+
+    const normalizedSource = (sourceDate === targetDate ? targetNext : sourceNext).map(
+      (item, position) => ({ ...item, day_date: sourceDate, position }),
+    )
+    const normalizedTarget =
+      sourceDate === targetDate
+        ? normalizedSource
+        : targetNext.map((item, position) => ({ ...item, day_date: targetDate, position }))
+
+    const changedItems =
+      sourceDate === targetDate ? normalizedSource : [...normalizedSource, ...normalizedTarget]
+    const changedById = new Map(changedItems.map((item) => [item.id, item]))
+    const nextItems = items.map((item) => changedById.get(item.id) ?? item)
+
+    const hasChanges = changedItems.some((item) => {
+      const previous = items.find((entry) => entry.id === item.id)
+      return (
+        previous && (previous.day_date !== item.day_date || previous.position !== item.position)
+      )
+    })
+    if (!hasChanges) return
+
+    setItems(nextItems)
+    setSavingOrder(true)
+    setPageError('')
+
+    try {
+      await Promise.all(
+        changedItems.map((item) =>
+          itineraryApi.update(tripId, item.id, {
+            day_date: item.day_date,
+            position: item.position,
+          }),
+        ),
+      )
+      setSnackbar('Порядок маршрута сохранён')
+    } catch {
+      await loadItems()
+      setPageError('Не удалось сохранить новый порядок маршрута. Список обновлён.')
+    } finally {
+      setSavingOrder(false)
+    }
+  }
+
   return (
     <>
       {pageError && (
         <Alert
           severity="error"
           action={
-            <Button color="inherit" size="small" onClick={() => void loadItems()} startIcon={<RefreshOutlinedIcon />}>
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => void loadItems()}
+              startIcon={<RefreshOutlinedIcon />}
+            >
               Повторить
             </Button>
           }
@@ -158,105 +294,48 @@ export function RoutePage() {
       )}
 
       {loading ? (
-        <Box sx={{ minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box
+          sx={{ minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
           <CircularProgress aria-label="Загрузка маршрута" />
         </Box>
       ) : (
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1.55fr) minmax(340px, 0.9fr)' },
-            alignItems: 'start',
-            gap: 3,
-          }}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={itineraryCollisionDetection}
+          onDragEnd={(event) => void handleDragEnd(event)}
         >
-          <Stack spacing={2.5} sx={{ minWidth: 0 }}>
-            {days.map((day, dayIndex) => (
-              <Paper
-                key={day.date}
-                variant="outlined"
-                sx={{ p: { xs: 2, sm: 2.75 }, borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: 1.75 }}
-              >
-                <Stack direction="row" sx={{display:'flex',
-                  justifyContent: "space-between",
-                  gap:1.5,
-                  alignItems:'center'
-                }} >
-                  <Typography
-                    component="h2"
-                    sx={{ fontFamily: "'Unbounded', sans-serif", fontWeight: 600, fontSize: 18, lineHeight: 1.4 }}
-                  >
-                    День {dayIndex + 1}{' '}
-                    <Box component="span" sx={{ fontFamily: 'Manrope, sans-serif', fontWeight: 600, fontSize: 15, color: 'text.secondary' }}>
-                      · {day.label}
-                    </Box>
-                  </Typography>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="primary"
-                    startIcon={<AddIcon />}
-                    onClick={() => openCreateForm(day.date)}
-                    sx={{
-                      minHeight: 40,
-                      px: 1.75,
-                      marginLeft:1,
-                      alignItems: 'center',
-                      bgcolor: 'primary.light',
-                      color: 'primary.dark',
-                      '&:hover': { bgcolor: '#C8E8EA' },
-                      flex: 'none',
-                    }}
-                  >
-                    Пункт
-                  </Button>
-                </Stack>
-
-                {day.items.length === 0 ? (
-                  <Box
-                    sx={{
-                      minHeight: 76,
-                      borderRadius: '14px',
-                      border: '1px dashed',
-                      borderColor: 'divider',
-                      bgcolor: '#FBFCFD',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      px: 2,
-                      textAlign: 'center',
-                    }}
-                  >
-                    <Typography color="text.secondary" variant="body2">
-                      Пока нет пунктов. Добавьте первое место на этот день.
-                    </Typography>
-                  </Box>
-                ) : (
-                  <Stack spacing={1.25}>
-                    {day.items.map((item, itemIndex) => {
-                      const itemNumber = days
-                        .slice(0, dayIndex)
-                        .reduce((total, previousDay) => total + previousDay.items.length, 0) + itemIndex
-                      return (
-                        <ItineraryItemCard
-                          key={item.id}
-                          item={item}
-                          index={itemNumber}
-                          dayIndex={dayIndex}
-                          onEdit={openEditForm}
-                          onDelete={deleteItem}
-                          deleting={deletingId === item.id}
-                        />
-                      )
-                    })}
-                  </Stack>
-                )}
-              </Paper>
-            ))}
-          </Stack>
-
-          <RouteMapPreview days={days} items={items} />
-        </Box>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'minmax(0, 1fr)',
+                lg: 'minmax(0, 1.55fr) minmax(340px, 0.9fr)',
+              },
+              alignItems: 'start',
+              gap: 3,
+            }}
+          >
+            <Stack spacing={2.5} sx={{ minWidth: 0 }}>
+              {days.map((day, dayIndex) => (
+                <RouteDaySection
+                  key={day.date}
+                  day={day}
+                  dayIndex={dayIndex}
+                  itemOffset={days
+                    .slice(0, dayIndex)
+                    .reduce((total, previousDay) => total + previousDay.items.length, 0)}
+                  onAdd={openCreateForm}
+                  onEdit={openEditForm}
+                  onDelete={deleteItem}
+                  deletingId={deletingId}
+                  dragDisabled={savingOrder}
+                />
+              ))}
+            </Stack>
+            <RouteMapPreview days={days} items={items} />
+          </Box>
+        </DndContext>
       )}
 
       <ItineraryForm
@@ -283,6 +362,139 @@ export function RoutePage() {
   )
 }
 
+function RouteDaySection({
+  day,
+  dayIndex,
+  itemOffset,
+  onAdd,
+  onEdit,
+  onDelete,
+  deletingId,
+  dragDisabled,
+}: {
+  day: TripDay
+  dayIndex: number
+  itemOffset: number
+  onAdd: (date: string) => void
+  onEdit: (item: ItineraryItem) => void
+  onDelete: (item: ItineraryItem) => void
+  deletingId: string | null
+  dragDisabled: boolean
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `day-${day.date}`,
+    data: { type: 'day', dayDate: day.date },
+  })
+
+  return (
+    <Paper
+      ref={setNodeRef}
+      variant="outlined"
+      sx={{
+        p: { xs: 2, sm: 2.75 },
+        borderRadius: '20px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1.75,
+        borderColor: isOver ? 'primary.main' : 'divider',
+        bgcolor: isOver ? 'rgba(14,124,134,0.035)' : 'background.paper',
+        transition: 'border-color 150ms ease, background-color 150ms ease',
+      }}
+    >
+      <Stack direction="row" sx={{
+        display:'flex',
+        justifyContent:"space-between",
+        gap:1.5,
+        alignItems:'center'
+      }}>
+        <Typography
+          component="h2"
+          sx={{
+            fontFamily: "'Unbounded', sans-serif",
+            fontWeight: 600,
+            fontSize: 18,
+            lineHeight: 1.4,
+          }}
+        >
+          День {dayIndex + 1}{' '}
+          <Box
+            component="span"
+            sx={{
+              fontFamily: 'Manrope, sans-serif',
+              fontWeight: 600,
+              fontSize: 15,
+              color: 'text.secondary',
+            }}
+          >
+            · {day.label}
+          </Box>
+        </Typography>
+        <Button
+          size="small"
+          variant="contained"
+          color="primary"
+          startIcon={<AddIcon />}
+          onClick={() => onAdd(day.date)}
+          sx={{
+            minHeight: 40,
+            px: 1.75,
+            bgcolor: 'primary.light',
+            color: 'primary.dark',
+            '&:hover': { bgcolor: '#C8E8EA' },
+            flex: 'none',
+          }}
+        >
+          Пункт
+        </Button>
+      </Stack>
+
+      <SortableContext
+        items={day.items.map((item) => item.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        {day.items.length === 0 ? (
+          <Box
+            sx={{
+              minHeight: 76,
+              borderRadius: '14px',
+              border: '1px dashed',
+              borderColor: isOver ? 'primary.main' : 'divider',
+              bgcolor: isOver ? '#DDF1F2' : '#FBFCFD',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              px: 2,
+              textAlign: 'center',
+            }}
+          >
+            <Typography color="text.secondary" variant="body2">
+              {isOver
+                ? 'Отпустите пункт, чтобы переместить его сюда'
+                : 'Пока нет пунктов. Добавьте первое место на этот день.'}
+            </Typography>
+          </Box>
+        ) : (
+          <Stack spacing={1.25}>
+            {day.items.map((item, itemIndex) => (
+              <ItineraryItemCard
+                key={item.id}
+                item={item}
+                index={itemOffset + itemIndex}
+                dayIndex={dayIndex}
+                dayDate={day.date}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                deleting={deletingId === item.id}
+                dragDisabled={dragDisabled}
+              />
+            ))}
+          </Stack>
+        )}
+      </SortableContext>
+    </Paper>
+  )
+}
+
 function RouteMapPreview({ days, items }: { days: TripDay[]; items: ItineraryItem[] }) {
   const points = [
     { x: 110, y: 90 },
@@ -299,7 +511,14 @@ function RouteMapPreview({ days, items }: { days: TripDay[]; items: ItineraryIte
       component="aside"
       aria-label="Карта маршрута"
       variant="outlined"
-      sx={{ p: 1.75, borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: 1.5, minWidth: 0 }}
+      sx={{
+        p: 1.75,
+        borderRadius: '20px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1.5,
+        minWidth: 0,
+      }}
     >
       <Box
         sx={{
@@ -318,7 +537,10 @@ function RouteMapPreview({ days, items }: { days: TripDay[]; items: ItineraryIte
           viewBox="0 0 400 520"
           preserveAspectRatio="xMidYMid slice"
         >
-          <path d="M-20 360 C80 330 120 400 200 380 C280 360 320 420 420 400 L420 470 C320 490 260 440 200 450 C120 465 60 420 -20 440 Z" fill="#BFE0EA" />
+          <path
+            d="M-20 360 C80 330 120 400 200 380 C280 360 320 420 420 400 L420 470 C320 490 260 440 200 450 C120 465 60 420 -20 440 Z"
+            fill="#BFE0EA"
+          />
           <path d="M0 120 L400 160" stroke="#FFFFFF" strokeWidth="10" />
           <path d="M140 0 L180 520" stroke="#FFFFFF" strokeWidth="10" />
           <path d="M0 260 L400 230" stroke="#FFFFFF" strokeWidth="6" />
@@ -327,7 +549,9 @@ function RouteMapPreview({ days, items }: { days: TripDay[]; items: ItineraryIte
           <rect x="200" y="280" width="50" height="60" rx="8" fill="#DCE8D9" />
           {markers.length > 1 && (
             <polyline
-              points={markers.map((item, index) => `${points[index].x},${points[index].y}`).join(' ')}
+              points={markers
+                .map((item, index) => `${points[index].x},${points[index].y}`)
+                .join(' ')}
               fill="none"
               stroke="#0E7C86"
               strokeWidth="4"
@@ -377,10 +601,24 @@ function RouteMapPreview({ days, items }: { days: TripDay[]; items: ItineraryIte
           Здесь будет карта Leaflet
         </Box>
         {items.length === 0 && (
-          <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Stack alignItems="center" spacing={0.5} sx={{ bgcolor: 'rgba(255,255,255,0.88)', borderRadius: 2, px: 2, py: 1.5 }}>
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Stack
+              alignItems="center"
+              spacing={0.5}
+              sx={{ bgcolor: 'rgba(255,255,255,0.88)', borderRadius: 2, px: 2, py: 1.5 }}
+            >
               <PlaceOutlinedIcon color="disabled" />
-              <Typography variant="body2" color="text.secondary">Места появятся на карте</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Места появятся на карте
+              </Typography>
             </Stack>
           </Box>
         )}
@@ -390,13 +628,24 @@ function RouteMapPreview({ days, items }: { days: TripDay[]; items: ItineraryIte
           const dayIndex = days.indexOf(day)
           return (
             <Stack key={day.date} direction="row" spacing={0.75} alignItems="center">
-              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: dayIndex % 2 === 1 ? 'secondary.main' : 'primary.main' }} />
-              <Typography sx={{ fontSize: 13, color: '#3D4757', fontWeight: 700 }}>День {dayIndex + 1}</Typography>
+              <Box
+                sx={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  bgcolor: dayIndex % 2 === 1 ? 'secondary.main' : 'primary.main',
+                }}
+              />
+              <Typography sx={{ fontSize: 13, color: '#3D4757', fontWeight: 700 }}>
+                День {dayIndex + 1}
+              </Typography>
             </Stack>
           )
         })}
         {legendDays.length === 0 && (
-          <Typography color="text.secondary" variant="body2">Добавьте места, чтобы увидеть дни маршрута</Typography>
+          <Typography color="text.secondary" variant="body2">
+            Добавьте места, чтобы увидеть дни маршрута
+          </Typography>
         )}
       </Stack>
     </Paper>
