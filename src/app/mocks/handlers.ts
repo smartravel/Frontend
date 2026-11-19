@@ -3,9 +3,24 @@ import type { LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../
 import { API_URL } from '../../shared/config/env'
 import { currentUser, db, startSession, toPublicUser } from './db'
 import type { CreateTripRequest, JoinTripRequest, TripListItem } from '../../entities/trip'
-import type { CreateItineraryRequest, ItineraryItem, UpdateItineraryRequest } from '../../entities/itinerary'
-import type { ChecklistItem, ChecklistScope, CreateChecklistRequest, UpdateChecklistRequest } from '../../entities/checklist'
-import type { CreatePollRequest, Poll, PollRecord, UpdatePollRequest, VotePollRequest } from '../../entities/polls'
+import type {
+  CreateItineraryRequest,
+  ItineraryItem,
+  UpdateItineraryRequest,
+} from '../../entities/itinerary'
+import type {
+  ChecklistItem,
+  ChecklistScope,
+  CreateChecklistRequest,
+  UpdateChecklistRequest,
+} from '../../entities/checklist'
+import type {
+  CreatePollRequest,
+  Poll,
+  PollRecord,
+  UpdatePollRequest,
+  VotePollRequest,
+} from '../../entities/polls'
 
 const url = (path: string) => `${API_URL}${path}`
 const unauthorized = () => HttpResponse.json({ detail: 'Не авторизован' }, { status: 401 })
@@ -85,13 +100,20 @@ function publicPoll(poll: PollRecord, tripId: string, userId: string): Poll {
     avatar_emoji: '🙂',
     role: 'member' as const,
   }
-  const votersByOption = new Map<string, Array<{ user_id: string; nickname: string; avatar_emoji: string }>>()
+  const votersByOption = new Map<
+    string,
+    Array<{ user_id: string; nickname: string; avatar_emoji: string }>
+  >()
 
   for (const vote of poll.votes) {
     const member = members.find((entry) => entry.user_id === vote.user_id)
     if (!member) continue
     const voters = votersByOption.get(vote.option_id) ?? []
-    voters.push({ user_id: member.user_id, nickname: member.nickname, avatar_emoji: member.avatar_emoji })
+    voters.push({
+      user_id: member.user_id,
+      nickname: member.nickname,
+      avatar_emoji: member.avatar_emoji,
+    })
     votersByOption.set(vote.option_id, voters)
   }
 
@@ -127,7 +149,7 @@ const pollHandlers = [
     if (!db.members[tripId]?.some((member) => member.user_id === user.id)) {
       return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
     }
-    const polls = db.polls[tripId] ??= []
+    const polls = (db.polls[tripId] ??= [])
     return HttpResponse.json(polls.map((poll) => publicPoll(poll, tripId, user.id)))
   }),
 
@@ -145,11 +167,25 @@ const pollHandlers = [
     const data = (await request.json()) as CreatePollRequest
     const title = data.title?.trim()
     const options = Array.isArray(data.options) ? data.options : []
-    const normalized = options.map((option) => ({ title: option.title?.trim() ?? '', description: option.description?.trim() || null }))
-    if (!title || normalized.length < 2 || normalized.length > 6 || normalized.some((option) => !option.title)) {
-      return HttpResponse.json({ detail: 'Укажите вопрос и от двух до шести непустых вариантов' }, { status: 422 })
+    const normalized = options.map((option) => ({
+      title: option.title?.trim() ?? '',
+      description: option.description?.trim() || null,
+    }))
+    if (
+      !title ||
+      normalized.length < 2 ||
+      normalized.length > 6 ||
+      normalized.some((option) => !option.title)
+    ) {
+      return HttpResponse.json(
+        { detail: 'Укажите вопрос и от двух до шести непустых вариантов' },
+        { status: 422 },
+      )
     }
-    if (new Set(normalized.map((option) => option.title.toLocaleLowerCase())).size !== normalized.length) {
+    if (
+      new Set(normalized.map((option) => option.title.toLocaleLowerCase())).size !==
+      normalized.length
+    ) {
       return HttpResponse.json({ detail: 'Варианты ответа не должны повторяться' }, { status: 422 })
     }
 
@@ -162,7 +198,7 @@ const pollHandlers = [
       options: normalized.map((option) => ({ id: crypto.randomUUID(), ...option })),
       votes: [],
     }
-    const polls = db.polls[tripId] ??= []
+    const polls = (db.polls[tripId] ??= [])
     polls.unshift(poll)
     const result = publicPoll(poll, tripId, user.id)
     notifyTrip(tripId, { type: 'created', entity: 'poll', data: result })
@@ -178,11 +214,15 @@ const pollHandlers = [
     if (trip instanceof Response) return trip
     const members = db.members[tripId] ?? []
     const member = members.find((entry) => entry.user_id === user.id)
-    if (!member) return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    if (!member)
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
     const poll = (db.polls[tripId] ?? []).find((entry) => entry.id === String(params.pollId))
     if (!poll) return HttpResponse.json({ detail: 'Опрос не найден' }, { status: 404 })
     if (poll.created_by !== user.id && member.role !== 'organizer') {
-      return HttpResponse.json({ detail: 'Закрыть опрос может его автор или организатор поездки' }, { status: 403 })
+      return HttpResponse.json(
+        { detail: 'Закрыть опрос может его автор или организатор поездки' },
+        { status: 403 },
+      )
     }
 
     const data = (await request.json()) as UpdatePollRequest
@@ -208,12 +248,16 @@ const pollHandlers = [
     if (trip instanceof Response) return trip
     const members = db.members[tripId] ?? []
     const member = members.find((entry) => entry.user_id === user.id)
-    if (!member) return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    if (!member)
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
     const polls = db.polls[tripId] ?? []
     const index = polls.findIndex((entry) => entry.id === String(params.pollId))
     if (index < 0) return HttpResponse.json({ detail: 'Опрос не найден' }, { status: 404 })
     if (polls[index].created_by !== user.id && member.role !== 'organizer') {
-      return HttpResponse.json({ detail: 'Удалить опрос может его автор или организатор поездки' }, { status: 403 })
+      return HttpResponse.json(
+        { detail: 'Удалить опрос может его автор или организатор поездки' },
+        { status: 403 },
+      )
     }
     const [deleted] = polls.splice(index, 1)
     notifyTrip(tripId, { type: 'deleted', entity: 'poll', data: { id: deleted.id } })
@@ -264,11 +308,14 @@ const checklistHandlers = [
 
     const scope = new URL(request.url).searchParams.get('scope') as ChecklistScope | null
     if (scope !== 'shared' && scope !== 'personal') {
-      return HttpResponse.json({ detail: 'Укажите тип списка: shared или personal' }, { status: 422 })
+      return HttpResponse.json(
+        { detail: 'Укажите тип списка: shared или personal' },
+        { status: 422 },
+      )
     }
     const records = (db.checklist[tripId] ??= [])
-    const visible = records.filter((item) =>
-      item.scope === scope && (scope === 'shared' || item.owner_id === user.id),
+    const visible = records.filter(
+      (item) => item.scope === scope && (scope === 'shared' || item.owner_id === user.id),
     )
     return HttpResponse.json(visible.map(publicChecklistItem))
   }),
@@ -288,12 +335,27 @@ const checklistHandlers = [
     const data = (await request.json()) as CreateChecklistRequest
     if (!data.title?.trim() || (data.scope !== 'shared' && data.scope !== 'personal')) {
       return HttpResponse.json(
-        { detail: [{ loc: ['body', !data.title?.trim() ? 'title' : 'scope'], msg: 'Укажите название и тип списка', type: 'value_error' }] },
+        {
+          detail: [
+            {
+              loc: ['body', !data.title?.trim() ? 'title' : 'scope'],
+              msg: 'Укажите название и тип списка',
+              type: 'value_error',
+            },
+          ],
+        },
         { status: 422 },
       )
     }
-    if (data.scope === 'shared' && data.assignee_id && !members.some((member) => member.user_id === data.assignee_id)) {
-      return HttpResponse.json({ detail: 'Ответственный не является участником поездки' }, { status: 422 })
+    if (
+      data.scope === 'shared' &&
+      data.assignee_id &&
+      !members.some((member) => member.user_id === data.assignee_id)
+    ) {
+      return HttpResponse.json(
+        { detail: 'Ответственный не является участником поездки' },
+        { status: 422 },
+      )
     }
 
     const record: ChecklistItem & { owner_id: string | null } = {
@@ -301,7 +363,7 @@ const checklistHandlers = [
       title: data.title.trim(),
       scope: data.scope,
       is_checked: false,
-      assignee_id: data.scope === 'shared' ? data.assignee_id ?? null : null,
+      assignee_id: data.scope === 'shared' ? (data.assignee_id ?? null) : null,
       owner_id: data.scope === 'personal' ? user.id : null,
     }
     const records = (db.checklist[tripId] ??= [])
@@ -322,20 +384,29 @@ const checklistHandlers = [
     }
 
     const records = (db.checklist[tripId] ??= [])
-    const item = records.find((entry) =>
-      entry.id === String(params.itemId) && (entry.scope === 'shared' || entry.owner_id === user.id),
+    const item = records.find(
+      (entry) =>
+        entry.id === String(params.itemId) &&
+        (entry.scope === 'shared' || entry.owner_id === user.id),
     )
     if (!item) return HttpResponse.json({ detail: 'Пункт чеклиста не найден' }, { status: 404 })
 
     const data = (await request.json()) as UpdateChecklistRequest
     if (data.title !== undefined && !data.title.trim()) {
       return HttpResponse.json(
-        { detail: [{ loc: ['body', 'title'], msg: 'Название не может быть пустым', type: 'value_error' }] },
+        {
+          detail: [
+            { loc: ['body', 'title'], msg: 'Название не может быть пустым', type: 'value_error' },
+          ],
+        },
         { status: 422 },
       )
     }
     if (data.assignee_id && !members.some((member) => member.user_id === data.assignee_id)) {
-      return HttpResponse.json({ detail: 'Ответственный не является участником поездки' }, { status: 422 })
+      return HttpResponse.json(
+        { detail: 'Ответственный не является участником поездки' },
+        { status: 422 },
+      )
     }
     Object.assign(item, data)
     if (data.title !== undefined) item.title = data.title.trim()
@@ -355,8 +426,10 @@ const checklistHandlers = [
     }
 
     const records = (db.checklist[tripId] ??= [])
-    const index = records.findIndex((entry) =>
-      entry.id === String(params.itemId) && (entry.scope === 'shared' || entry.owner_id === user.id),
+    const index = records.findIndex(
+      (entry) =>
+        entry.id === String(params.itemId) &&
+        (entry.scope === 'shared' || entry.owner_id === user.id),
     )
     if (index < 0) return HttpResponse.json({ detail: 'Пункт чеклиста не найден' }, { status: 404 })
     records.splice(index, 1)
@@ -364,7 +437,75 @@ const checklistHandlers = [
   }),
 ]
 
+function getItineraryRatingSummary(tripId: string, itemId: string, userId: string) {
+  const ratings = db.placeRatings[tripId]?.[itemId] ?? []
+  const google = db.googlePlaceRatings[itemId]
+  const total = ratings.reduce((sum, entry) => sum + entry.rating, 0)
+
+  return {
+    item_id: itemId,
+    average_rating: ratings.length ? Math.round((total / ratings.length) * 10) / 10 : null,
+    ratings_count: ratings.length,
+    my_rating: ratings.find((entry) => entry.user_id === userId)?.rating ?? null,
+    google_rating: google?.rating ?? null,
+    google_rating_count: google?.userRatingCount ?? null,
+  }
+}
+
 const tripHandlers = [
+  http.get(url('/trips/:tripId/itinerary/ratings'), async ({ params }) => {
+    await delay(180)
+    const user = currentUser()
+    if (!user) return unauthorized()
+
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    if (!db.members[tripId]?.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+
+    const items = db.itinerary[tripId] ?? []
+    return HttpResponse.json(
+      items.map((item) => getItineraryRatingSummary(tripId, item.id, user.id)),
+    )
+  }),
+
+  http.put(url('/trips/:tripId/itinerary/:itemId/rating'), async ({ params, request }) => {
+    await delay(220)
+    const user = currentUser()
+    if (!user) return unauthorized()
+
+    const tripId = String(params.tripId)
+    const trip = findTrip(tripId)
+    if (trip instanceof Response) return trip
+    if (!db.members[tripId]?.some((member) => member.user_id === user.id)) {
+      return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
+    }
+
+    const itemId = String(params.itemId)
+    const item = (db.itinerary[tripId] ?? []).find((entry) => entry.id === itemId)
+    if (!item) return HttpResponse.json({ detail: 'Пункт маршрута не найден' }, { status: 404 })
+
+    const data = (await request.json()) as { rating?: number }
+    if (!Number.isInteger(data.rating) || (data.rating ?? 0) < 1 || (data.rating ?? 0) > 5) {
+      return HttpResponse.json(
+        { detail: 'Оценка должна быть целым числом от 1 до 5' },
+        { status: 422 },
+      )
+    }
+
+    const tripRatings = (db.placeRatings[tripId] ??= {})
+    const ratings = (tripRatings[itemId] ??= [])
+    const existing = ratings.find((entry) => entry.user_id === user.id)
+    if (existing) existing.rating = data.rating!
+    else ratings.push({ user_id: user.id, rating: data.rating! })
+
+    const summary = getItineraryRatingSummary(tripId, itemId, user.id)
+    notifyTrip(tripId, { type: 'updated', entity: 'itinerary-rating', data: summary })
+    return HttpResponse.json(summary)
+  }),
+
   http.get(url('/trips/:tripId/itinerary'), async ({ params }) => {
     await delay(350)
     const user = currentUser()
@@ -376,9 +517,9 @@ const tripHandlers = [
       return HttpResponse.json({ detail: 'Вы не участник этой поездки' }, { status: 403 })
     }
     const items = (db.itinerary[tripId] ??= [])
-    return HttpResponse.json([...items].sort((a, b) =>
-      a.day_date.localeCompare(b.day_date) || a.position - b.position,
-    ))
+    return HttpResponse.json(
+      [...items].sort((a, b) => a.day_date.localeCompare(b.day_date) || a.position - b.position),
+    )
   }),
 
   http.post(url('/trips/:tripId/itinerary'), async ({ params, request }) => {
@@ -418,7 +559,9 @@ const tripHandlers = [
       note: data.note ?? null,
       lat: data.lat ?? null,
       lng: data.lng ?? null,
-      position: data.position ?? (dayItems.length ? Math.max(...dayItems.map((item) => item.position)) + 1 : 0),
+      position:
+        data.position ??
+        (dayItems.length ? Math.max(...dayItems.map((item) => item.position)) + 1 : 0),
     }
     items.push(created)
     return HttpResponse.json(created, { status: 201 })
@@ -442,7 +585,9 @@ const tripHandlers = [
     const data = (await request.json()) as UpdateItineraryRequest
     if (data.title !== undefined && !data.title.trim()) {
       return HttpResponse.json(
-        { detail: [{ loc: ['body', 'title'], msg: 'Укажите название места', type: 'value_error' }] },
+        {
+          detail: [{ loc: ['body', 'title'], msg: 'Укажите название места', type: 'value_error' }],
+        },
         { status: 422 },
       )
     }
@@ -451,8 +596,12 @@ const tripHandlers = [
     Object.assign(item, data)
     if (data.title !== undefined) item.title = data.title.trim()
     if (data.day_date && data.day_date !== previousDate && data.position === undefined) {
-      const targetItems = items.filter((entry) => entry.day_date === data.day_date && entry.id !== item.id)
-      item.position = targetItems.length ? Math.max(...targetItems.map((entry) => entry.position)) + 1 : 0
+      const targetItems = items.filter(
+        (entry) => entry.day_date === data.day_date && entry.id !== item.id,
+      )
+      item.position = targetItems.length
+        ? Math.max(...targetItems.map((entry) => entry.position)) + 1
+        : 0
     }
     return HttpResponse.json(item)
   }),
@@ -470,8 +619,11 @@ const tripHandlers = [
 
     const items = (db.itinerary[tripId] ??= [])
     const itemIndex = items.findIndex((entry) => entry.id === String(params.itemId))
-    if (itemIndex < 0) return HttpResponse.json({ detail: 'Пункт маршрута не найден' }, { status: 404 })
+    if (itemIndex < 0)
+      return HttpResponse.json({ detail: 'Пункт маршрута не найден' }, { status: 404 })
     items.splice(itemIndex, 1)
+    if (db.placeRatings[tripId]) delete db.placeRatings[tripId][String(params.itemId)]
+    delete db.googlePlaceRatings[String(params.itemId)]
     return new HttpResponse(null, { status: 204 })
   }),
   http.get(url('/trips'), async ({ request }) => {

@@ -8,6 +8,7 @@ import {
   DialogTitle,
   Stack,
   TextField,
+  Typography,
 } from '@mui/material'
 import type { CreateItineraryRequest, ItineraryItem } from '../../../entities/itinerary'
 
@@ -38,6 +39,8 @@ export function ItineraryForm({
   const [dayDate, setDayDate] = useState(initialDate)
   const [time, setTime] = useState('')
   const [note, setNote] = useState('')
+  const [latitude, setLatitude] = useState('')
+  const [longitude, setLongitude] = useState('')
   const [validationError, setValidationError] = useState('')
 
   useEffect(() => {
@@ -46,6 +49,8 @@ export function ItineraryForm({
     setDayDate(item?.day_date ?? initialDate)
     setTime(item?.time ?? '')
     setNote(item?.note ?? '')
+    setLatitude(item?.lat != null ? String(item.lat) : '')
+    setLongitude(item?.lng != null ? String(item.lng) : '')
     setValidationError('')
   }, [initialDate, item, open])
 
@@ -60,12 +65,33 @@ export function ItineraryForm({
       return
     }
 
+    const hasLatitude = latitude.trim() !== ''
+    const hasLongitude = longitude.trim() !== ''
+    if (hasLatitude !== hasLongitude) {
+      setValidationError('Укажите обе координаты: широту и долготу')
+      return
+    }
+
+    const parsedLatitude = hasLatitude ? Number(latitude) : null
+    const parsedLongitude = hasLongitude ? Number(longitude) : null
+    if (
+      (parsedLatitude !== null &&
+        (!Number.isFinite(parsedLatitude) || parsedLatitude < -90 || parsedLatitude > 90)) ||
+      (parsedLongitude !== null &&
+        (!Number.isFinite(parsedLongitude) || parsedLongitude < -180 || parsedLongitude > 180))
+    ) {
+      setValidationError('Проверьте координаты: широта от -90 до 90, долгота от -180 до 180')
+      return
+    }
+
     setValidationError('')
     await onSubmit({
       day_date: dayDate,
       title: title.trim(),
       time: time || null,
       note: note.trim() || null,
+      lat: parsedLatitude,
+      lng: parsedLongitude,
     })
   }
 
@@ -121,6 +147,30 @@ export function ItineraryForm({
               onChange={(event) => setNote(event.target.value)}
               slotProps={{ htmlInput: { maxLength: 500 } }}
             />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Широта (необязательно)"
+                placeholder="55.7985"
+                value={latitude}
+                onChange={(event) => setLatitude(event.target.value)}
+                slotProps={{ htmlInput: { step: 'any', min: -90, max: 90 } }}
+              />
+              <TextField
+                fullWidth
+                type="number"
+                label="Долгота (необязательно)"
+                placeholder="49.1064"
+                value={longitude}
+                onChange={(event) => setLongitude(event.target.value)}
+                slotProps={{ htmlInput: { step: 'any', min: -180, max: 180 } }}
+              />
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              Координаты нужны, чтобы показать место на карте и построить пеший маршрут. Их можно
+              скопировать из ссылки OpenStreetMap.
+            </Typography>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>

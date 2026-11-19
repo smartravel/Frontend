@@ -1,10 +1,15 @@
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import DeleteOutlineIcon from '@mui/icons-material/Delete'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
-import { Box, IconButton, Paper, Stack, Typography } from '@mui/material'
+import StarRoundedIcon from '@mui/icons-material/StarRounded'
+import StarOutlineRoundedIcon from '@mui/icons-material/StarOutlineRounded'
+import { Box, IconButton, Paper, Stack, Tooltip, Typography } from '@mui/material'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { ItineraryItem as ItineraryItemType } from '../../../entities/itinerary'
+import type {
+  ItineraryItem as ItineraryItemType,
+  ItineraryRatingSummary,
+} from '../../../entities/itinerary'
 
 type ItineraryItemProps = {
   item: ItineraryItemType
@@ -15,6 +20,9 @@ type ItineraryItemProps = {
   onDelete: (item: ItineraryItemType) => void
   deleting?: boolean
   dragDisabled?: boolean
+  ratingSummary?: ItineraryRatingSummary
+  ratingSaving?: boolean
+  onRate: (itemId: string, rating: number) => void
 }
 
 export function ItineraryItem({
@@ -26,6 +34,9 @@ export function ItineraryItem({
   onDelete,
   deleting,
   dragDisabled = false,
+  ratingSummary,
+  ratingSaving = false,
+  onRate,
 }: ItineraryItemProps) {
   const {
     attributes,
@@ -40,6 +51,8 @@ export function ItineraryItem({
     disabled: dragDisabled,
     data: { type: 'itinerary-item', dayDate },
   })
+
+
 
   const badgeSx =
     dayIndex % 2 === 1
@@ -112,6 +125,67 @@ export function ItineraryItem({
             {item.note}
           </Typography>
         )}
+        <Stack
+          direction="row"
+          spacing={1.5}
+          useFlexGap
+          flexWrap="wrap"
+          alignItems="center"
+          sx={{ pt: 0.5 }}
+        >
+          <Stack direction="row" spacing={0.4} alignItems="center">
+            <StarRoundedIcon sx={{ fontSize: 16, color: '#F28F3B' }} />
+            <Typography
+              component="span"
+              sx={{ fontSize: 12, fontWeight: 700, color: 'text.primary' }}
+            >
+              {ratingSummary?.average_rating ?? '—'}
+            </Typography>
+            <Typography component="span" sx={{ fontSize: 12, color: 'text.secondary' }}>
+              · {ratingSummary?.ratings_count ?? 0} оценок участников
+            </Typography>
+          </Stack>
+          <Stack direction="row" spacing={0.1} alignItems="center">
+            <Typography component="span" sx={{ fontSize: 12, color: 'text.secondary', mr: 0.25 }}>
+              Ваша оценка
+            </Typography>
+            {[1, 2, 3, 4, 5].map((value) => (
+              <Tooltip key={value} title={`Оценить на ${value}`} arrow>
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label={`Оценить ${item.title} на ${value} из 5`}
+                    disabled={ratingSaving}
+                    onClick={() => onRate(item.id, value)}
+                    sx={{
+                      p: 0.15,
+                      color: (ratingSummary?.my_rating ?? 0) >= value ? '#F28F3B' : '#C9D3DF',
+                    }}
+                  >
+                    {(ratingSummary?.my_rating ?? 0) >= value ? (
+                      <StarRoundedIcon sx={{ fontSize: 17 }} />
+                    ) : (
+                      <StarOutlineRoundedIcon sx={{ fontSize: 17 }} />
+                    )}
+                  </IconButton>
+                </span>
+              </Tooltip>
+            ))}
+          </Stack>
+            <Tooltip
+              title="Демонстрационный внешний рейтинг. После настройки Places API здесь будут реальные данные."
+              arrow
+            >
+              <Stack spacing={0.35} direction="row"  alignItems="center">
+                <StarRoundedIcon sx={{ fontSize: 15, color: '#F28F3B' }} />
+                <Typography component="span" sx={{ fontSize: 12, fontWeight: 700 }}>
+                </Typography>
+                <Typography component="span" sx={{ fontSize: 11, color: 'text.secondary' }}>
+                  демо · {ratingSummary?.google_rating_count?.toLocaleString('ru-RU') ?? 0} оценок
+                </Typography>
+              </Stack>
+            </Tooltip>
+        </Stack>
       </Stack>
       <Stack direction="row" spacing={0} sx={{ flex: 'none' }}>
         <IconButton

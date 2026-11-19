@@ -1,6 +1,4 @@
 import AddIcon from '@mui/icons-material/Add'
-import MapOutlinedIcon from '@mui/icons-material/MapOutlined'
-import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined'
 import RefreshOutlinedIcon from '@mui/icons-material/Refresh'
 import {
   DndContext,
@@ -35,10 +33,12 @@ import {
   itineraryApi,
   type CreateItineraryRequest,
   type ItineraryItem,
+  type ItineraryRatingSummary,
 } from '../../entities/itinerary'
 import { useTripContext } from '../../entities/trip'
 import { ApiError } from '../../shared/api'
 import { ItineraryForm, ItineraryItem as ItineraryItemCard } from '../../features/itinerary'
+import { RouteMap } from './RouteMap'
 
 type TripDay = {
   date: string
@@ -101,6 +101,8 @@ export function RoutePage() {
   const { tripId = '' } = useParams()
   const { trip } = useTripContext()
   const [items, setItems] = useState<ItineraryItem[]>([])
+  const [ratingSummaries, setRatingSummaries] = useState<Record<string, ItineraryRatingSummary>>({})
+  const [ratingSavingId, setRatingSavingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState('')
   const [formOpen, setFormOpen] = useState(false)
@@ -123,6 +125,15 @@ export function RoutePage() {
     try {
       const result = await itineraryApi.getList(tripId)
       setItems(result)
+      try {
+        const summaries = await itineraryApi.getRatingSummaries(tripId)
+        setRatingSummaries(
+          Object.fromEntries(summaries.map((summary) => [summary.item_id, summary] as const)),
+        )
+      } catch {
+        // Ratings are supplementary: a rating service failure must not hide the itinerary.
+        setRatingSummaries({})
+      }
     } catch (error) {
       setPageError(getErrorMessage(error, 'Не удалось загрузить маршрут. Попробуйте ещё раз.'))
     } finally {
@@ -181,11 +192,30 @@ export function RoutePage() {
     try {
       await itineraryApi.delete(tripId, item.id)
       setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))
+      setRatingSummaries((current) => {
+        const next = { ...current }
+        delete next[item.id]
+        return next
+      })
       setSnackbar('Пункт маршрута удалён')
     } catch (error) {
       setPageError(getErrorMessage(error, 'Не удалось удалить пункт. Попробуйте ещё раз.'))
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  async function handleRate(itemId: string, rating: number) {
+    if (ratingSavingId) return
+    setRatingSavingId(itemId)
+    try {
+      const summary = await itineraryApi.rate(tripId, itemId, rating)
+      setRatingSummaries((current) => ({ ...current, [itemId]: summary }))
+      setSnackbar('Ваша оценка сохранена')
+    } catch (error) {
+      setPageError(getErrorMessage(error, 'Не удалось сохранить оценку. Попробуйте ещё раз.'))
+    } finally {
+      setRatingSavingId(null)
     }
   }
 
@@ -330,10 +360,13 @@ export function RoutePage() {
                   onDelete={deleteItem}
                   deletingId={deletingId}
                   dragDisabled={savingOrder}
+                  ratingSummaries={ratingSummaries}
+                  ratingSavingId={ratingSavingId}
+                  onRate={handleRate}
                 />
               ))}
             </Stack>
-            <RouteMapPreview days={days} items={items} />
+            <RouteMap days={days} ratingSummaries={ratingSummaries} />
           </Box>
         </DndContext>
       )}
@@ -371,6 +404,9 @@ function RouteDaySection({
   onDelete,
   deletingId,
   dragDisabled,
+  ratingSummaries,
+  ratingSavingId,
+  onRate,
 }: {
   day: TripDay
   dayIndex: number
@@ -380,6 +416,9 @@ function RouteDaySection({
   onDelete: (item: ItineraryItem) => void
   deletingId: string | null
   dragDisabled: boolean
+  ratingSummaries: Record<string, ItineraryRatingSummary>
+  ratingSavingId: string | null
+  onRate: (itemId: string, rating: number) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `day-${day.date}`,
@@ -403,12 +442,7 @@ function RouteDaySection({
     >
       <Stack
         direction="row"
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          gap: 1.5,
-          alignItems: 'center',
-        }}
+        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
       >
         <Typography
           component="h2"
@@ -489,168 +523,14 @@ function RouteDaySection({
                 onDelete={onDelete}
                 deleting={deletingId === item.id}
                 dragDisabled={dragDisabled}
+                ratingSummary={ratingSummaries[item.id]}
+                ratingSaving={ratingSavingId === item.id}
+                onRate={onRate}
               />
             ))}
           </Stack>
         )}
       </SortableContext>
-    </Paper>
-  )
-}
-
-function RouteMapPreview({ days, items }: { days: TripDay[]; items: ItineraryItem[] }) {
-  const points = [
-    { x: 110, y: 90 },
-    { x: 230, y: 200 },
-    { x: 300, y: 330 },
-    { x: 120, y: 300 },
-  ]
-  const dayByDate = new Map(days.map((day, index) => [day.date, index] as const))
-  const markers = items.slice(0, points.length)
-  const legendDays = days.filter((day) => day.items.length > 0)
-
-  return (
-    <Paper
-      component="aside"
-      aria-label="Карта маршрута"
-      variant="outlined"
-      sx={{
-        p: 1.75,
-        borderRadius: '20px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 1.5,
-        minWidth: 0,
-      }}
-    >
-      <Box
-        sx={{
-          position: 'relative',
-          height: { xs: 300, lg: 520 },
-          borderRadius: '14px',
-          overflow: 'hidden',
-          bgcolor: '#E9F1F4',
-        }}
-      >
-        <svg
-          role="img"
-          aria-label={`Схема карты маршрута, пунктов: ${items.length}`}
-          width="100%"
-          height="100%"
-          viewBox="0 0 400 520"
-          preserveAspectRatio="xMidYMid slice"
-        >
-          <path
-            d="M-20 360 C80 330 120 400 200 380 C280 360 320 420 420 400 L420 470 C320 490 260 440 200 450 C120 465 60 420 -20 440 Z"
-            fill="#BFE0EA"
-          />
-          <path d="M0 120 L400 160" stroke="#FFFFFF" strokeWidth="10" />
-          <path d="M140 0 L180 520" stroke="#FFFFFF" strokeWidth="10" />
-          <path d="M0 260 L400 230" stroke="#FFFFFF" strokeWidth="6" />
-          <path d="M300 0 L270 520" stroke="#FFFFFF" strokeWidth="6" />
-          <rect x="30" y="20" width="90" height="80" rx="8" fill="#DCE8D9" />
-          <rect x="200" y="280" width="50" height="60" rx="8" fill="#DCE8D9" />
-          {markers.length > 1 && (
-            <polyline
-              points={markers
-                .map((item, index) => `${points[index].x},${points[index].y}`)
-                .join(' ')}
-              fill="none"
-              stroke="#0E7C86"
-              strokeWidth="4"
-              strokeDasharray="2 9"
-              strokeLinecap="round"
-            />
-          )}
-          {markers.map((item, index) => {
-            const dayIndex = dayByDate.get(item.day_date) ?? 0
-            const fill = dayIndex % 2 === 1 ? '#F28F3B' : '#0E7C86'
-            return (
-              <g key={item.id}>
-                <circle cx={points[index].x} cy={points[index].y} r="16" fill={fill} />
-                <text
-                  x={points[index].x}
-                  y={points[index].y + 5}
-                  textAnchor="middle"
-                  fontFamily="Manrope, sans-serif"
-                  fontSize="14"
-                  fontWeight="700"
-                  fill={dayIndex === 1 ? '#1B2433' : '#FFFFFF'}
-                >
-                  {index + 1}
-                </text>
-              </g>
-            )
-          })}
-        </svg>
-        <Box
-          sx={{
-            position: 'absolute',
-            left: 1.5,
-            bottom: 1.5,
-            height: 28,
-            px: 1.25,
-            borderRadius: '8px',
-            bgcolor: 'rgba(255,255,255,0.92)',
-            color: '#3D4757',
-            fontSize: 12,
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.5,
-          }}
-        >
-          <MapOutlinedIcon sx={{ fontSize: 15 }} />
-          Здесь будет карта Leaflet
-        </Box>
-        {items.length === 0 && (
-          <Box
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Stack
-              alignItems="center"
-              spacing={0.5}
-              sx={{ bgcolor: 'rgba(255,255,255,0.88)', borderRadius: 2, px: 2, py: 1.5 }}
-            >
-              <PlaceOutlinedIcon color="disabled" />
-              <Typography variant="body2" color="text.secondary">
-                Места появятся на карте
-              </Typography>
-            </Stack>
-          </Box>
-        )}
-      </Box>
-      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-        {legendDays.map((day) => {
-          const dayIndex = days.indexOf(day)
-          return (
-            <Stack key={day.date} direction="row" spacing={0.75} alignItems="center">
-              <Box
-                sx={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  bgcolor: dayIndex % 2 === 1 ? 'secondary.main' : 'primary.main',
-                }}
-              />
-              <Typography sx={{ fontSize: 13, color: '#3D4757', fontWeight: 700 }}>
-                День {dayIndex + 1}
-              </Typography>
-            </Stack>
-          )
-        })}
-        {legendDays.length === 0 && (
-          <Typography color="text.secondary" variant="body2">
-            Добавьте места, чтобы увидеть дни маршрута
-          </Typography>
-        )}
-      </Stack>
     </Paper>
   )
 }

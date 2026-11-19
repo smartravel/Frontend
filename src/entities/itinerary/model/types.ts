@@ -20,3 +20,12 @@ export type CreateItineraryRequest = {
 }
 
 export type UpdateItineraryRequest = Partial<CreateItineraryRequest>
+
+export type ItineraryRatingSummary = {
+  item_id: string
+  average_rating: number | null
+  ratings_count: number
+  my_rating: number | null
+  google_rating: number | null
+  google_rating_count: number | null
+}
